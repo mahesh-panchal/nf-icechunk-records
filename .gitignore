@@ -1,0 +1,12 @@
+# Nextflow files
+.nextflow*
+work/
+results/
+
+# Icechunk stores (outside work/, one per sample)
+icechunk_stores/
+
+# pixi
+.pixi
+
+.DS_Store

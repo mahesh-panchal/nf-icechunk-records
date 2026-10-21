@@ -1,0 +1,25 @@
+[workspace]
+authors = ["Mahesh Binzer-Panchal <mahesh.binzer-panchal@nbis.se>"]
+channels = ["conda-forge", "bioconda"]
+name = "nf-icechunk-records"
+platforms = ["linux-64", "osx-arm64", "linux-aarch64"]
+version = "0.1.0"
+
+[tasks]
+run = "nextflow run main.nf"
+lint = "nextflow lint main.nf"
+clean-work = "nextflow clean -f -before last && find work -type d -empty -delete"
+
+[dependencies]
+nextflow = ">=26.10.0,<27"
+
+[feature.icechunk.dependencies]
+python = ">=3.12,<3.14"
+icechunk = ">=1.0"
+zarr = ">=3.1"
+numpy = "*"
+scikit-image = "*"
+scipy = "*"
+
+[environments]
+icechunk = { features = ["icechunk"] }

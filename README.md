@@ -23,6 +23,7 @@ A record `{id, repo, snapshot}` is passed between stages. `repo` is a path outsi
 
     pixi run icechunk-stages          # stores in icechunk_stores/, results in results/
     pixi run icechunk-stages --sigma 1,1,1,4,4    # reruns BLUR onward only
+    pixi run test-resume              # run the resume scenarios below in a scratch copy (needs docker)
     pixi run lint                     # nextflow lint main.nf
     pixi run clean-work               # drop work/ of earlier runs, keep stores and results
     pixi run clean-all                # remove work/, results/, icechunk_stores/ and .nextflow*
@@ -45,6 +46,8 @@ Dummy data: two OME-Zarr images, see Credits.
 - `checkRef` verifies `<repo>/snapshots/<id>` exists before each stage on every launch, including `-resume`.
 
 ## Resume behaviour (tested)
+
+`pixi run test-resume` (`tests/resume.sh`) asserts each row below. nf-test is not used: it gives every test a fresh work dir and runs Nextflow once, so it cannot test `-resume` (an open PR adds a resume option: [askimed/nf-test#339](https://github.com/askimed/nf-test/pull/339)).
 
 Two samples, full run first (10 tasks), then a change to the control store and `-resume`. `IMPORT` always reruns (`cache false`) but is idempotent.
 

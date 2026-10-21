@@ -8,19 +8,9 @@ version = "0.1.0"
 [tasks]
 icechunk-stages = "nextflow run main.nf"
 lint = "nextflow lint main.nf"
+test-resume = "bash tests/resume.sh"
 clean-work = "nextflow clean -f -before last && find work -type d -empty -delete"
 clean-all = "nextflow clean -f; rm -rf work results icechunk_stores .nextflow*"
 
 [dependencies]
 nextflow = ">=26.10.0,<27"
-
-[feature.icechunk.dependencies]
-python = ">=3.12,<3.14"
-icechunk = ">=1.0"
-zarr = ">=3.1"
-numpy = "*"
-scikit-image = "*"
-scipy = "*"
-
-[environments]
-icechunk = { features = ["icechunk"] }

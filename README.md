@@ -37,7 +37,7 @@ Outputs: `results/features/<id>/features.csv` and `results/tables.csv` (index wi
 
 The docker config mounts `icechunk_stores/` into the container because the stores live outside `work/`. If you change `--store_dir`, change `docker.runOptions` in `nextflow.config` to match.
 
-Dummy data: the two OME-Zarr images from [BioImageTools/ome-zarr-image-analysis-nextflow](https://github.com/BioImageTools/ome-zarr-image-analysis-nextflow).
+Dummy data: two OME-Zarr images, see Credits.
 
 ## Resume safety
 
@@ -46,7 +46,21 @@ Dummy data: the two OME-Zarr images from [BioImageTools/ome-zarr-image-analysis-
 
 ## Caveats
 
-- Local filesystem storage is not safe for concurrent commits; there is one repo per sample. A shared repo needs an object store.
-- Do not give `checkRef`-style helper functions typed record params or returns (`Ref -> Ref`): the record becomes a `Main.Ref` hashed by identity and every task reruns each launch.
-- `checkRef` errors show as `InvocationTargetException` on the console; the message is in `.nextflow.log`.
-- The check only tests snapshot existence, not chunk integrity; the import fingerprint uses paths and sizes, not contents.
+- **Typed helper functions break `-resume`.** Do not give `checkRef`-style helpers typed record params or returns (`Ref -> Ref`); every task reruns each launch. Reported upstream: [nextflow-io/nextflow#7884](https://github.com/nextflow-io/nextflow/issues/7884).
+- **One repo per sample.** Local filesystem storage is not safe for concurrent commits; a shared repo needs an object store. Source: `open_repo` in `bin/icestage.py` uses `ic.local_filesystem_storage`.
+- **`checkRef` errors are masked.** They show as `InvocationTargetException` on the console; the message is in `.nextflow.log`. Observed with `checkRef` in `main.nf`, which calls `error` inside a `map` closure.
+- **Shallow integrity check.** `checkRef` only tests that `<repo>/snapshots/<id>` exists (`main.nf`), not chunk integrity. The import fingerprint uses relative paths and file sizes, not contents (`fingerprint` in `bin/icestage.py`).
+
+## Credits
+
+> [!NOTE]
+> The dummy data and the image-analysis steps (blur, segment, features) come from [BioImageTools/ome-zarr-image-analysis-nextflow](https://github.com/BioImageTools/ome-zarr-image-analysis-nextflow). This prototype reworks that idea to pass an Icechunk store between stages by records.
+
+## References
+
+- [Icechunk](https://icechunk.io): transactional storage engine for Zarr
+- [Zarr](https://zarr.dev): chunked, compressed N-dimensional arrays
+- [OME-Zarr (OME-NGFF)](https://ngff.openmicroscopy.org): bioimaging data layout on Zarr
+- [Nextflow](https://nextflow.io/docs/latest/): typed syntax and records
+- [Seqera Wave](https://seqera.io/wave/): container build service used for `envs/icechunk.yml`
+- [pixi](https://pixi.sh): environment and task runner

@@ -7,8 +7,10 @@ version = "0.1.0"
 
 [tasks]
 icechunk-stages = "nextflow run main.nf"
-lint = "nextflow lint main.nf"
+lint = "nextflow lint main.nf scatter.nf"
 test-resume = "bash tests/resume.sh"
+scatter-gather = "nextflow run scatter.nf"
+test-scatter = "bash tests/scatter.sh"
 clean-work = "nextflow clean -f -before last && find work -type d -empty -delete"
 clean-all = "nextflow clean -f; rm -rf work results icechunk_stores .nextflow*"
 

@@ -36,6 +36,14 @@ ice() {
         -w /work "$IMAGE" python -c "$1" 2>/dev/null
 }
 
+# run_fresh <args...>: the same, without -resume
+run_fresh() {
+    nextflow run main.nf "$@" >"$LOG" 2>&1
+    RC=$?
+    COMPLETED=$(sed -n 's/.*completed=\([0-9]*\).*/\1/p' "$LOG" | tail -1)
+    CACHED=$(sed -n 's/.*cached=\([0-9]*\).*/\1/p' "$LOG" | tail -1)
+}
+
 # check <name> <expected completed> <expected cached>
 check() {
     if [ "$RC" -eq 0 ] && [ "$COMPLETED" = "$2" ] && [ "$CACHED" = "$3" ]; then
@@ -50,7 +58,7 @@ run
 check "fresh run" 10 0
 
 run
-check "resume, nothing changed (only IMPORT reruns)" 2 8
+check "resume, nothing changed: every task cached, IMPORT included" 0 10
 
 ice "
 import icechunk as ic, zarr
@@ -60,7 +68,7 @@ zarr.open_group(s.store, mode='a')['image/0'][..., :50, :50] = 0
 s.commit('manual edit after import')
 " >/dev/null || { echo "FAIL  could not commit the manual edit"; exit 1; }
 run
-check "new commit on main is not noticed, everything stays cached" 2 8
+check "new commit on main is not noticed, everything stays cached" 0 10
 
 BLUR_SNAP=$(ice "
 import icechunk as ic
@@ -78,10 +86,17 @@ fi
 
 rm -rf "$CONTROL"
 run
-check "deleted store: IMPORT rebuilds, only that sample reruns" 6 4
+if [ "$RC" -ne 0 ] && grep -q "Icechunk snapshot .* not found" .nextflow.log; then
+    echo "PASS  deleted store: resume fails with a checkRef error"
+else
+    echo "FAIL  deleted store: expected a checkRef error, got rc=$RC"
+    fails=$((fails + 1))
+fi
+run_fresh
+check "without -resume the deleted store is rebuilt and everything reruns" 10 0
 
 run --sigma 1,1,1,4,4
-check "sigma change reruns BLUR onward for every sample" 10 0
+check "sigma change reruns BLUR onward for every sample, IMPORT stays cached" 8 2
 
 [ "$fails" -eq 0 ] && echo "all resume scenarios passed" || echo "$fails scenario(s) failed"
 exit "$fails"

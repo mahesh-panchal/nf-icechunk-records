@@ -28,11 +28,11 @@ record Table {
     features: Path
 }
 
-// Idempotent and never cached: it returns the existing import snapshot when the
-// store is intact (downstream stays cached) and rebuilds it when it is gone.
+// Cached like any process. If it reruns it is idempotent: it returns the existing import
+// commit when the store already holds this input, else it rebuilds the store. A store
+// deleted behind the cache is caught by checkRef below.
 process IMPORT {
     tag "${src.id}"
-    cache false
 
     input:
     src: Src

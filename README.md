@@ -55,6 +55,8 @@ Dummy data: two OME-Zarr images, see Credits.
 
 > [!NOTE]
 > The dummy data and the image-analysis steps (blur, segment, features) come from [BioImageTools/ome-zarr-image-analysis-nextflow](https://github.com/BioImageTools/ome-zarr-image-analysis-nextflow). This prototype reworks that idea to pass an Icechunk store between stages by records.
+>
+> That repository is MIT licensed (Copyright (c) 2023 embl-cba). The images in `data/` are copied from it; its licence text is in [`data/NOTICE.md`](data/NOTICE.md). `bin/icestage.py` and `main.nf` carry attribution headers.
 
 ## References
 
@@ -64,3 +66,7 @@ Dummy data: two OME-Zarr images, see Credits.
 - [Nextflow](https://nextflow.io/docs/latest/): typed syntax and records
 - [Seqera Wave](https://seqera.io/wave/): container build service used for `envs/icechunk.yml`
 - [pixi](https://pixi.sh): environment and task runner
+
+## Licence
+
+[MIT](LICENSE). The images in `data/` are third-party, see [`data/NOTICE.md`](data/NOTICE.md).

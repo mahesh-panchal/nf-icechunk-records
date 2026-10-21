@@ -3,6 +3,11 @@
 
 Every stage takes (repo, parent snapshot), commits on its own branch forked from
 that snapshot, and prints the new snapshot id on stdout.
+
+The blur, segment and features steps follow the analysis in blur.py, segment.py
+and extract_features.py from BioImageTools/ome-zarr-image-analysis-nextflow
+(MIT, Copyright (c) 2023 embl-cba), reimplemented against Icechunk sessions
+rather than OME-Zarr directories. https://github.com/BioImageTools/ome-zarr-image-analysis-nextflow
 """
 import argparse
 import sys

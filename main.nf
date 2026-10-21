@@ -1,3 +1,5 @@
+// Stage structure (BLUR, SEGMENT, FEATURES) adapted from
+// https://github.com/BioImageTools/ome-zarr-image-analysis-nextflow (MIT, Copyright (c) 2023 embl-cba).
 // Icechunk datastore threaded through stages by a record {id, repo, snapshot}.
 // The store lives outside work/ (params.store_dir); tasks only receive its
 // location and a snapshot id, so cache hashes stay small and stable.

@@ -1,20 +1,20 @@
 # nf-icechunk-records
 
-Can a data version control system keep one dataset that stages **add to**, instead of each stage writing a full copy, while Nextflow's `-resume` cache stays valid? This prototype tries it with [Icechunk](https://icechunk.io) (a versioned store for [Zarr](https://zarr.dev) arrays). Requires Nextflow >= 26.10 (typed syntax, records).
+Can a data version control system keep one dataset that stages add to, instead of each stage writing a full copy, while Nextflow's `-resume` cache stays valid? This prototype tries it with [Icechunk](https://icechunk.io), a versioned store for [Zarr](https://zarr.dev) arrays. Requires Nextflow >= 26.10 (typed syntax, records).
 
 ## Answer
 
 **It works, but for this example it is not worth the extra machinery.**
 
-- It works: stages add to one store without copying it, resume reuses the cache, parallel tasks can add to it, and a killed task is retried by Nextflow.
-- It is not clearly worth it here. On a POSIX filesystem, plain Zarr directories where each stage writes only what it creates, with the next store assembled from hardlinks, used the same disk (83.6 MB against 83.6 MB for one stage, 86.7 MB against 86.6 MB for three) with no extra dependency. Copying the whole store at every stage used 2 to 7 times more.
-- A versioned store could still pay off where links are not possible or where plain directories do not fit: object storage, stages that modify existing data in place, many concurrent writers, or a need for exact versions and provenance. That is untested here, and other tools (DVC, lakeFS, Delta Lake) might fit better.
+- Stages add to one store without copying it, `-resume` reuses the cache, parallel tasks can add to it, and Nextflow retries killed tasks.
+- On a POSIX filesystem, plain Zarr directories gave the same disk use with no extra dependency. Each stage wrote only what it created, and the next store was assembled from hardlinks (see [Disk use](#disk-use-against-the-usual-way)). Copying the whole store at every stage used 2 to 7 times more.
+- A versioned store could still pay off where links are impossible or plain directories do not fit: object storage, in-place changes to existing data, many concurrent writers, exact versions and provenance. Untested here. Other tools (DVC, lakeFS, Delta Lake) might fit better.
 
 ## How it works
 
-A small record `{id, repo, snapshot}` is passed between stages. `repo` is the store's location, `snapshot` is the commit the data is at. Each stage forks a branch at its parent snapshot, commits, and emits a record with the new snapshot id. Task hashes depend only on that short string, so resume works and the data is never staged into task directories.
+A record `{id, repo, snapshot}` passes between stages. `repo` is the store's location and `snapshot` is the commit the data is at. Each stage forks a branch at its parent snapshot, commits, and emits a record with the new snapshot id. Task hashes depend only on that short string, so resume works and the data is never staged into task directories.
 
-`main.nf` is the sequential version (one store per sample, stages in sequence):
+`main.nf` runs the stages in sequence, one store per sample:
 
 | Stage | Reads | Writes (commit) |
 |---|---|---|
@@ -24,11 +24,11 @@ A small record `{id, repo, snapshot}` is passed between stages. `repo` is the st
 | FEATURES | `labels/<name>/0` | `features/<name>` |
 | EXPORT | `features/<name>` | none (CSV published to `results/`) |
 
-`scatter.nf` is the parallel version: many `TILE` tasks each write their own chunks of one array into a shared store in `work/icechunk/`, and one `GATHER` task per sample merges them and makes the only commit.
+`scatter.nf` runs in parallel. Many `TILE` tasks write their own chunks of one array into a shared store in `work/icechunk/`. One `GATHER` task per sample merges them and makes the only commit.
 
-## Requirements and usage
+## Usage
 
-- [pixi](https://pixi.sh) (provides Nextflow) and Docker. Tasks run in a Wave container built from `envs/icechunk.yml`; rebuild it with `wave --conda-file envs/icechunk.yml --platform linux/amd64 --freeze --await -o json` and update `process.container` in `nextflow.config`.
+Requires [pixi](https://pixi.sh) and Docker. Tasks run in a Wave container built from `envs/icechunk.yml`. To rebuild it, run `wave --conda-file envs/icechunk.yml --platform linux/amd64 --freeze --await -o json` and update `process.container` in `nextflow.config`.
 
 ```
 pixi run icechunk-stages          # main.nf: stores in icechunk_stores/, results in results/
@@ -38,11 +38,11 @@ pixi run test-scatter             # scatter.nf scenarios (scratch copy, needs do
 pixi run clean-all                # remove work/, results/, icechunk_stores/ and .nextflow*
 ```
 
-Add `-resume` to resume a run. Parameters: `--sigma`, `--seg_name`, `--store_dir` for `main.nf`; `--size`, `--chunk`, `--tile_chunks`, `--sigma`, `--samples` for `scatter.nf`. The docker config mounts `icechunk_stores/`; change it in `nextflow.config` if you change `--store_dir`.
+Add `-resume` to resume. Parameters: `--sigma`, `--seg_name`, `--store_dir` (`main.nf`); `--size`, `--chunk`, `--tile_chunks`, `--sigma`, `--samples` (`scatter.nf`). If you change `--store_dir`, change the store mount under `docker` in `nextflow.config` too.
 
 ## What was tested
 
-Each row is asserted by `tests/resume.sh` or `tests/scatter.sh`, except where noted.
+`tests/resume.sh` and `tests/scatter.sh` assert each row except where noted.
 
 **`main.nf`** (2 samples, 10 tasks):
 
@@ -50,10 +50,10 @@ Each row is asserted by `tests/resume.sh` or `tests/scatter.sh`, except where no
 |---|---|
 | none | all 10 cached, `IMPORT` included |
 | new commit on `main` after import | ignored, all 10 cached |
-| a stage snapshot file removed | stops at `checkRef`: snapshot not found, re-run without `-resume` |
+| a stage snapshot file removed | stops at `checkRef`: snapshot not found |
 | whole store deleted | same error; a run without `-resume` rebuilds it |
 | `--sigma` changed | BLUR onward reruns for both samples (8 run, 2 cached) |
-| same-size edit to an input file | **not noticed**, all 10 cached (checked by hand, not in the test) |
+| same-size edit to an input file | **not noticed**, all 10 cached (checked by hand) |
 
 **`scatter.nf`** (2 samples x 16 tiles, 38 tasks):
 
@@ -63,35 +63,35 @@ Each row is asserted by `tests/resume.sh` or `tests/scatter.sh`, except where no
 | `-resume`, nothing changed | all 38 cached |
 | one tile's work dir deleted | that tile, `GATHER` and `VERIFY` rerun (3 tasks) |
 | a tile fails for good, then `-resume` | resume finishes and reuses the completed tiles |
-| concurrency | up to 10 tiles ran at the same time |
+| concurrency | up to 10 tiles ran at once |
 | project (`work/` and store) moved | all 38 cached |
-| store deleted | resume fails with `checkRef`; a run without `-resume` rebuilds it |
+| store deleted | resume fails at `checkRef`; a run without `-resume` rebuilds it |
 
-Where the data lives, for a 4096 x 4096 sample with `scatter.nf`: the store was 83 MB and all task directories together were 0.5 MB. Each task keeps only its own small files (a 182 to 908 byte session file per tile, `verify.csv`); only the store is shared.
+For a 4096 x 4096 sample, the `scatter.nf` store was 83 MB and all task directories together were 0.5 MB. A task keeps only its own small files (a 182 to 908 byte session file per tile, `verify.csv`); only the store is shared.
 
 ## Disk use against the usual way
 
-Measured once with a throwaway baseline workflow that is not kept in this repository: the same job with the Zarr store passed between processes as a plain directory, as nf-core modules such as spatialvi's `sdata/*` do. Size of `work/` after one clean run (1 sample, 4096 x 4096, 16 tiles per stage):
+The baseline is a throwaway workflow that is not kept in this repository. It ran the same job with the store passed between processes as a plain directory, as nf-core modules such as spatialvi's `sdata/*` do. Size of `work/` after one clean run (1 sample, 4096 x 4096, 16 tiles per stage):
 
 | Version | One stage | Three stages (blur, segment, features) |
 |---|---|---|
 | shared Icechunk store | 83.6 MB | 86.6 MB |
 | plain directories, hardlinked assembly | 83.6 MB | 86.7 MB |
-| plain directories, each stage copies the store | 166.6 MB (tiles return only their pixels), 614.7 MB (tiles return full copies) | 338.9 MB |
+| plain directories, each stage copies the store | 166.6 MB | 338.9 MB |
+| as above, and each tile returns a full store copy | 614.7 MB | not run |
 
 Hardlinks need one filesystem, stages that never rewrite a chunk they received, and tiles that cover whole chunks of an unsharded array. They do not work on an object store.
 
-## Findings worth knowing before building on this
+## Findings
 
-- **The cache cannot see inside the store.** Edits made after import, corrupt chunks, and same-size edits to input files go unnoticed (even with `deep`). A check on every launch (`checkRef`) catches a deleted snapshot or store, but not changed contents. Corruption only shows when a stage reads the data.
-- **One committer on a local filesystem.** Letting every tile commit to one branch lost writes silently: in 10 trials with 8 processes, every commit returned success but 30 of 80 tiles were missing. Concurrent branch create and delete also lost updates. So only `INIT` and `GATHER` change repo metadata, and tiles hand back sessions to merge. Per-process commits should be safe on an object store with conditional writes (untested).
-- **Distinct names for collected files.** Four `Set<Path>` inputs all named `tile.fork` were staged under one name, so `GATHER` merged one tile four times. Tile files are named `tile-<n>.fork` and `gather` refuses duplicates.
-- **Moving the project reruns every task unless `process.cache = 'deep'`** (set in `nextflow.config`). The default cache key includes the absolute path of each `bin/` script, so a moved or re-cloned project reran all 38 tasks; `deep` hashes content instead and it resumed fully cached. This is ordinary Nextflow behaviour, not specific to Icechunk.
-- **Keep absolute paths out of scripts and records** or the task hash changes when the project moves. `main.nf` still uses an absolute `--store_dir`; `scatter.nf` uses a key relative to `work/`.
-- **Typed helper functions break `-resume`.** Do not give `checkRef`-style helpers typed record params or returns; every task reruns. Reported upstream: [nextflow-io/nextflow#7884](https://github.com/nextflow-io/nextflow/issues/7884).
-- **`checkRef` errors are masked.** They show as `InvocationTargetException` on the console; the message is in `.nextflow.log`.
-- **Store lifetime.** `scatter.nf` keeps the store in `work/`, so purging `work/` removes the data. Retried tasks leave unreferenced chunks in the store, and old snapshots need garbage collection.
-- **Not tested:** an object store (S3, MinIO), a shared filesystem across nodes, arrays larger than a few GB, and per-process commits on a store with conditional writes. Sizes above are from one machine's Docker mount.
+- **The cache cannot see inside the store.** Edits after import, corrupt chunks, and same-size edits to input files go unnoticed, even with `process.cache = 'deep'`. `checkRef` runs on every launch and catches a deleted snapshot or store, not changed contents. Corruption shows only when a stage reads the data.
+- **One committer on a local filesystem.** With every tile committing to one branch, 8 processes in 10 trials returned success on every commit but lost 30 of 80 tiles. Concurrent branch create and delete also lost updates. So only `INIT` and `GATHER` change repo metadata, and tiles hand back sessions to merge. Per-process commits should be safe on an object store with conditional writes (untested).
+- **Collected files need distinct names.** Four `Set<Path>` inputs named `tile.fork` were staged under one name, so `GATHER` merged one tile four times. Tile files are named `tile-<n>.fork` and `gather` refuses duplicates.
+- **Moving the project reruns every task unless the hash is path-free.** The default cache key includes the absolute path of each `bin/` script, so a moved or re-cloned project reran all 38 tasks. `process.cache = 'deep'` (set in `nextflow.config`) hashes content instead, and the moved project resumed fully cached. This is ordinary Nextflow behaviour, not specific to Icechunk. Absolute paths in scripts or records break it too: `main.nf` puts an absolute `--store_dir` in its script, so it reruns when moved. `scatter.nf` uses a key relative to `work/`.
+- **Typed helper functions break `-resume`.** Give `checkRef`-style helpers no typed record params or returns, or every task reruns. Reported upstream: [nextflow-io/nextflow#7884](https://github.com/nextflow-io/nextflow/issues/7884).
+- **`checkRef` errors are masked.** The console shows `InvocationTargetException`; the message is in `.nextflow.log`.
+- **Store lifetime.** `scatter.nf` keeps its store in `work/`, so purging `work/` removes the data. Retried tasks leave unreferenced chunks, and old snapshots need garbage collection.
+- **Not tested:** object stores (S3, MinIO), a filesystem shared across nodes, arrays over a few GB, and per-process commits with conditional writes. Sizes are from one machine's Docker mount.
 
 ## Credits
 

@@ -21,8 +21,8 @@ A record `{id, repo, snapshot}` is passed between stages. `repo` is a path outsi
 
 ## Usage
 
-    pixi run run                      # stores in icechunk_stores/, results in results/
-    pixi run run --sigma 1,1,1,4,4    # reruns BLUR onward only
+    pixi run icechunk-stages          # stores in icechunk_stores/, results in results/
+    pixi run icechunk-stages --sigma 1,1,1,4,4    # reruns BLUR onward only
     pixi run lint                     # nextflow lint main.nf
     pixi run clean-work               # drop work/ of earlier runs, keep stores and results
     pixi run clean-all                # remove work/, results/, icechunk_stores/ and .nextflow*
@@ -43,6 +43,20 @@ Dummy data: two OME-Zarr images, see Credits.
 
 - `IMPORT` is `cache false` but idempotent: an intact store returns its existing import snapshot (downstream stays cached); a missing store is rebuilt and only that sample's chain reruns.
 - `checkRef` verifies `<repo>/snapshots/<id>` exists before each stage on every launch, including `-resume`.
+
+## Resume behaviour (tested)
+
+Two samples, full run first (10 tasks), then a change to the control store and `-resume`. `IMPORT` always reruns (`cache false`) but is idempotent.
+
+| Change to the store | Result on `-resume` |
+|---|---|
+| none | `IMPORT` x2 rerun, 8 cached |
+| new commit added on `main` after import (edited `image/0`) | same as none: the edit is not noticed, the chain stays on its immutable snapshots |
+| a stage snapshot file removed (BLUR's) | stops at `checkRef`: `Icechunk snapshot <id> not found ... re-run without -resume` |
+| whole store deleted | `IMPORT` rebuilds it with a new snapshot id; only that sample's BLUR, SEGMENT, FEATURES, EXPORT rerun (6 run, 4 cached) |
+| `--sigma` changed | BLUR onward reruns for every sample (10 run, 0 cached); the import snapshot is reused, not rebuilt |
+
+So resume restarts from the first stage whose parent snapshot id changed, and never copies the store into `work/`. Snapshots are immutable, so later commits on a branch do not disturb earlier stages; they are also invisible to the workflow until a stage is rerun from them.
 
 ## Caveats
 

@@ -35,14 +35,14 @@ process IMPORT {
     input:
     src: Src
 
-    output:
-    record(id: src.id, repo: repo, snapshot: stdout().trim())
-
     script:
     repo = "${params.store_dir}/${src.id}.icechunk"
     """
-    icestage.py init --repo ${repo} --input ${src.zarr}
+    SNAPSHOT=\$(icestage.py init --repo ${repo} --input ${src.zarr})
     """
+
+    output:
+    record(id: src.id, repo: repo, snapshot: env('SNAPSHOT'))
 }
 
 process BLUR {
@@ -52,14 +52,14 @@ process BLUR {
     ref: Ref
     sigma: String
 
-    output:
-    record(id: ref.id, repo: ref.repo, snapshot: stdout().trim())
-
     script:
     """
-    icestage.py blur --repo ${ref.repo} --parent ${ref.snapshot} \\
-        --branch blur-${ref.snapshot} --sigma ${sigma}
+    SNAPSHOT=\$(icestage.py blur --repo ${ref.repo} --parent ${ref.snapshot} \\
+        --branch blur-${ref.snapshot} --sigma ${sigma})
     """
+
+    output:
+    record(id: ref.id, repo: ref.repo, snapshot: env('SNAPSHOT'))
 }
 
 process SEGMENT {
@@ -69,14 +69,14 @@ process SEGMENT {
     ref: Ref
     name: String
 
-    output:
-    record(id: ref.id, repo: ref.repo, snapshot: stdout().trim())
-
     script:
     """
-    icestage.py segment --repo ${ref.repo} --parent ${ref.snapshot} \\
-        --branch segment-${ref.snapshot} --name ${name}
+    SNAPSHOT=\$(icestage.py segment --repo ${ref.repo} --parent ${ref.snapshot} \\
+        --branch segment-${ref.snapshot} --name ${name})
     """
+
+    output:
+    record(id: ref.id, repo: ref.repo, snapshot: env('SNAPSHOT'))
 }
 
 process FEATURES {
@@ -86,14 +86,14 @@ process FEATURES {
     ref: Ref
     name: String
 
-    output:
-    record(id: ref.id, repo: ref.repo, snapshot: stdout().trim())
-
     script:
     """
-    icestage.py features --repo ${ref.repo} --parent ${ref.snapshot} \\
-        --branch features-${ref.snapshot} --name ${name}
+    SNAPSHOT=\$(icestage.py features --repo ${ref.repo} --parent ${ref.snapshot} \\
+        --branch features-${ref.snapshot} --name ${name})
     """
+
+    output:
+    record(id: ref.id, repo: ref.repo, snapshot: env('SNAPSHOT'))
 }
 
 // Read-only: materialise a table from a snapshot (nothing is committed).
@@ -104,13 +104,13 @@ process EXPORT {
     ref: Ref
     name: String
 
-    output:
-    record(id: ref.id, snapshot: ref.snapshot, features: file('features.csv'))
-
     script:
     """
     icestage.py export --repo ${ref.repo} --parent ${ref.snapshot} --name ${name} > /dev/null
     """
+
+    output:
+    record(id: ref.id, snapshot: ref.snapshot, features: file('features.csv'))
 }
 
 // Runs on every launch, including -resume, where cached tasks are skipped and

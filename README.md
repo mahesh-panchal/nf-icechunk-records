@@ -14,10 +14,28 @@ A record `{id, repo, snapshot}` is passed between stages. `repo` is a path outsi
 | FEATURES | `labels/<name>/0` | `features/<name>` |
 | EXPORT | `features/<name>` | none (CSV published to `results/`) |
 
-## Run
+## Requirements
+
+- [pixi](https://pixi.sh) (provides Nextflow >= 26.10)
+- Docker. Tasks run in a Wave container, `community.wave.seqera.io/library/icechunk:02b6b7323726df2f`, built from `envs/icechunk.yml` (`linux/amd64`, frozen, no expiry). To rebuild: `wave --conda-file envs/icechunk.yml --platform linux/amd64 --freeze --await -o json`, then update `process.container` in `nextflow.config`.
+
+## Usage
 
     pixi run run                      # stores in icechunk_stores/, results in results/
     pixi run run --sigma 1,1,1,4,4    # reruns BLUR onward only
+    pixi run lint                     # nextflow lint main.nf
+    pixi run clean-work               # drop work/ of earlier runs, keep stores and results
+    pixi run clean-all                # remove work/, results/, icechunk_stores/ and .nextflow*
+
+| Parameter | Default | Meaning |
+|---|---|---|
+| `--store_dir` | `icechunk_stores/` | Where the per-sample Icechunk repos live |
+| `--sigma` | `1,1,1,2.5,2.5` | Gaussian sigma per axis for BLUR |
+| `--seg_name` | `otsu` | Label and feature table name |
+
+Outputs: `results/features/<id>/features.csv` and `results/tables.csv` (index with the snapshot each table came from).
+
+The docker config mounts `icechunk_stores/` into the container because the stores live outside `work/`. If you change `--store_dir`, change `docker.runOptions` in `nextflow.config` to match.
 
 Dummy data: the two OME-Zarr images from [BioImageTools/ome-zarr-image-analysis-nextflow](https://github.com/BioImageTools/ome-zarr-image-analysis-nextflow).
 

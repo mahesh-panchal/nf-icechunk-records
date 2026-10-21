@@ -1,0 +1,10 @@
+name: icechunk
+channels:
+  - conda-forge
+dependencies:
+  - python>=3.12,<3.14
+  - icechunk>=1.0
+  - zarr>=3.1
+  - numpy
+  - scikit-image
+  - scipy

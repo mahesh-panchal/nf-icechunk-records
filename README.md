@@ -26,6 +26,53 @@ A record `{id, repo, snapshot}` passes between stages. `repo` is the store's loc
 
 `scatter.nf` runs in parallel. Many `TILE` tasks write their own chunks of one array into a shared store in `work/icechunk/`. One `GATHER` task per sample merges them and makes the only commit.
 
+## Key implementation points
+
+**Pass the snapshot id, not the data.** A stage prints its new snapshot id. The process captures it from a shell variable with `env()`, so the next stage receives a record of a few strings (`BLUR` in `main.nf`):
+
+```nextflow
+script:
+"""
+SNAPSHOT=\$(icestage.py blur --repo ${ref.repo} --parent ${ref.snapshot} \\
+    --branch blur-${ref.snapshot} --sigma ${sigma})
+"""
+
+output:
+record(id: ref.id, repo: ref.repo, snapshot: env('SNAPSHOT'))
+```
+
+**Fork at the parent and make every stage rerunnable.** `stage_session` in `bin/icestage.py` deletes the stage's branch if it exists and recreates it at the parent snapshot. A retry starts from the same data and commits a new snapshot id; the old commit stays in the store, unreferenced.
+
+**Check the store on every launch.** `-resume` skips cached tasks, so nothing else notices a deleted store. `checkRef` runs in the channel `.map` before each stage. Leave it untyped, or every task reruns ([#7884](https://github.com/nextflow-io/nextflow/issues/7884)):
+
+```nextflow
+def checkRef(ref) {
+    def snap = file("${ref.repo}/snapshots/${ref.snapshot}")
+    if( !snap.exists() )
+        error "Icechunk snapshot ${ref.snapshot} not found in ${ref.repo} ..."
+    return ref
+}
+```
+
+**Keep the store out of the task directories and out of the task hash.** `main.nf` takes `--store_dir`. `scatter.nf` keeps the store in `work/icechunk/` and passes a key relative to `work/`; each task resolves it from its own directory with `ROOT=$(dirname "$(dirname "$PWD")")`.
+
+**For parallel writers, commit once.** In `scatter.nf`:
+
+1. `INIT` creates every array, so the metadata exists before any parallel task starts, and a `base` branch at the init snapshot.
+2. Each `TILE` forks a session off `base`, writes one chunk-aligned region, and saves the session as `tile-<n>.fork`. It makes no commit:
+
+   ```python
+   fork = repo.writable_session("base").fork()
+   assert fork.snapshot_id == a.parent
+   zarr.open_group(fork.store, mode="a")["blurred"][r0:r1, c0:c1] = core
+   ```
+
+3. `GATHER` resets a branch at the parent snapshot, merges every fork, and commits once.
+
+A killed tile leaves only unreferenced chunks. Nextflow retries it (`errorStrategy = { task.exitStatus == 137 ? 'retry' : 'terminate' }` for `TILE`) and the retry writes the same region again.
+
+**Set `process.cache = 'deep'`** in `nextflow.config`, or moving the project reruns every task (see [Findings](#findings)).
+
 ## Usage
 
 Requires [pixi](https://pixi.sh) and Docker. Tasks run in a Wave container built from `envs/icechunk.yml`. To rebuild it, run `wave --conda-file envs/icechunk.yml --platform linux/amd64 --freeze --await -o json` and update `process.container` in `nextflow.config`.
